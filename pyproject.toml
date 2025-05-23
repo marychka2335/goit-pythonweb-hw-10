@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "goit-pythonweb-hw-08"
+version = "0.1.0"
+description = ""
+authors = ["Olena Panchenko <marychka2335@gmail.com>"]
+readme = "README.md"
+
+packages = [
+    { include = "src" }  
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.8"
+uvicorn = "^0.34.0"
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.37"}
+psycopg2 = "^2.9.10"
+pydantic = "^2.10.5"
+alembic = "^1.14.0"
+pydantic-settings = "^2.7.1"
+asyncpg = "^0.30.0"
+email-validator = "^2.2.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
