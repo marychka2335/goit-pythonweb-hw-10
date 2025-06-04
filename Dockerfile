@@ -1,30 +1,31 @@
-# Вибираємо базовий образ з Python 3.12
-FROM python:3.12-slim
+FROM python:3.12-alpine
 
-# Встановлюємо необхідні системні пакети для Poetry, компіляції залежностей та psycopg2
-RUN apt-get update && apt-get install -y gcc curl libpq-dev python3-dev
+ENV APP_HOME=/app
+WORKDIR $APP_HOME
 
-# Встановлюємо Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
+# Встановлення додаткових пакетів (gcc, musl-dev, postgresql-dev, python3-dev та netcat для перевірки доступності)
+RUN apk update && apk add --no-cache \
+    gcc \
+    musl-dev \
+    postgresql-dev \
+    python3-dev \
+    netcat-openbsd
 
-# Додаємо Poetry до PATH
-ENV PATH="/root/.local/bin:$PATH"
+COPY requirements.txt $APP_HOME/requirements.txt
+RUN pip install -r requirements.txt
 
-# Створюємо та переміщаємося до робочої директорії
-WORKDIR /src
+COPY ./main.py /app/main.py
+COPY ./src /app/src
 
-# Копіюємо файли проєкту до контейнера
-COPY pyproject.toml poetry.lock ./
-COPY . .
 
-# Копіюємо .env файл (якщо він існує)
-COPY .env .env
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
-# Встановлюємо залежності через Poetry (без dev-залежностей)
-RUN poetry install --no-interaction --only main --no-root
 
-# Відкриваємо порт, який буде використовувати додаток
 EXPOSE 8000
 
-# Запускаємо сервер
-CMD ["poetry", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["./entrypoint.sh"]
+ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

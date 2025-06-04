@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 from src.conf.config import config as settings
 
 logger = logging.getLogger("uvicorn.error")
+logger.info("Database URL: %s", settings.DB_URL)
 
 
 class DatabaseSessionManager:

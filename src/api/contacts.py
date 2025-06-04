@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError  # Додано для обробки помилок БД
 
+from src.core.depend_service import get_current_user
 from src.database.db import get_db
+from src.entity.models import User
 from src.services.contacts import ContactService
-
 from src.schemas.contact import (
     ContactResponseSchema,
     ContactCreateSchema,
@@ -23,6 +24,7 @@ async def get_contacts(
     limit: int = Query(10, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """
     Отримати список контактів з пагінацією.
@@ -30,7 +32,9 @@ async def get_contacts(
     logger.info(
         "Отримання списку контактів. Limit: %d, Offset: %d", limit, offset)
     contact_service = ContactService(db)
-    contacts = await contact_service.get_contacts(limit=limit, offset=offset)
+    contacts = await contact_service.get_contacts(
+        user_id=user.id, limit=limit, offset=offset
+    )
     logger.info("Отримано %d контактів", len(contacts))
     return contacts
 
@@ -44,6 +48,7 @@ async def search_contacts(
     limit: int = Query(10, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """
     Пошук контактів за іменем, прізвищем або електронною адресою.
@@ -63,20 +68,23 @@ async def search_contacts(
         email=email,
         limit=limit,
         offset=offset,
+        user_id=user.id,
     )
     logger.info("Пошук повернув %d контактів", len(results))
     return results
 
 
 @router.get("/upcoming_birthdays", response_model=Sequence[ContactResponseSchema])
-async def get_upcoming_birthdays(db: AsyncSession = Depends(get_db)):
+async def get_upcoming_birthdays(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
     """
     Отримати контакти з днями народження, що настануть протягом наступних 7 днів.
     """
     logger.info(
         "Отримання контактів з наближенням дня народження протягом 7 днів")
     contact_service = ContactService(db)
-    contacts = await contact_service.get_contacts_with_upcoming_birthdays()
+    contacts = await contact_service.get_contacts_with_upcoming_birthdays(user.id)
     logger.info(
         "Знайдено %d контактів з майбутнім днем народження", len(contacts))
     return contacts
@@ -89,13 +97,17 @@ async def get_upcoming_birthdays(db: AsyncSession = Depends(get_db)):
     description="Отримання контакту за ідентифікатором",
     response_description="Детальна інформація контакту",
 )
-async def get_contact(contact_id: int, db: AsyncSession = Depends(get_db)):
+async def get_contact(
+    contact_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Отримати контакт за його ідентифікатором.
     """
     logger.info("Спроба отримати контакт з id: %d", contact_id)
     contact_service = ContactService(db)
-    contact = await contact_service.get_contact_by_id(contact_id)
+    contact = await contact_service.get_contact_by_id(contact_id, user.id)
     if not contact:
         logger.error("Контакт з id %d не знайдено", contact_id)
         raise HTTPException(
@@ -110,7 +122,11 @@ async def get_contact(contact_id: int, db: AsyncSession = Depends(get_db)):
     response_model=ContactResponseSchema,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_contact(body: ContactCreateSchema, db: AsyncSession = Depends(get_db)):
+async def create_contact(
+    body: ContactCreateSchema,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Створити новий контакт.
     """
@@ -118,7 +134,7 @@ async def create_contact(body: ContactCreateSchema, db: AsyncSession = Depends(g
         logger.info("Створення нового контакту з даними: %s",
                     body.model_dump())
         contact_service = ContactService(db)
-        contact = await contact_service.create_contact(body)
+        contact = await contact_service.create_contact(body, user.id)
         logger.info("Новий контакт створено з id: %d", contact.id)
         return contact
     except ValueError as e:
@@ -145,7 +161,10 @@ async def create_contact(body: ContactCreateSchema, db: AsyncSession = Depends(g
 
 @router.put("/{contact_id}", response_model=ContactResponseSchema)
 async def update_contact(
-    contact_id: int, body: ContactUpdateSchema, db: AsyncSession = Depends(get_db)
+    contact_id: int,
+    body: ContactUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """
     Оновити дані існуючого контакту.
@@ -157,7 +176,7 @@ async def update_contact(
             body.model_dump(exclude_unset=True),
         )
         contact_service = ContactService(db)
-        contact = await contact_service.update_contact(contact_id, body)
+        contact = await contact_service.update_contact(contact_id, body, user.id)
         if not contact:
             logger.error(
                 "Не вдалося оновити контакт. Контакт з id %d не знайдено", contact_id
@@ -188,13 +207,17 @@ async def update_contact(
 
 
 @router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_contact(contact_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_contact(
+    contact_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
     Видалити контакт за ідентифікатором.
     """
     logger.info("Спроба видалити контакт з id: %d", contact_id)
     contact_service = ContactService(db)
-    deleted_contact = await contact_service.remove_contact(contact_id)
+    deleted_contact = await contact_service.remove_contact(contact_id, user.id)
     if not deleted_contact:
         logger.error(
             "Не вдалося видалити контакт. Контакт з id %d не знайдено", contact_id
